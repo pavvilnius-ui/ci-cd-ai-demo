@@ -12,10 +12,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.10"
 
@@ -29,7 +29,7 @@ jobs:
           pytest tests/ --maxfail=1 --disable-warnings -q > failed_pipeline.log || true
 
       - name: Upload logs
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: failed-pipeline-log
           path: failed_pipeline.log
@@ -41,10 +41,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.10"
 
@@ -54,7 +54,7 @@ jobs:
           pip install openai
 
       - name: Download logs
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: failed-pipeline-log
           path: .
