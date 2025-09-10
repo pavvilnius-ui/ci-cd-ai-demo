@@ -19,16 +19,29 @@ def analyze_logs(log_path):
     print("=== AI Assistant Analysis (via OpenAI) ===")
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",  # fast + cheap, good for logs
+            model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "You are an assistant that analyzes CI/CD pipeline errors and suggests fixes."},
-                {"role": "user", "content": f"Here are the CI/CD logs:\n\n{logs}\n\nPlease explain the error and suggest a possible fix."}
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an assistant that analyzes CI/CD pipeline errors and suggests fixes. "
+                        "Always provide a complete, ready-to-use code snippet if a test is failing."
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": f"Here are the CI/CD logs:\n\n{logs}\n\nExplain the error and provide the corrected test code completely."
+                }
             ],
-            max_tokens=250
+            max_tokens=350
         )
+
+        # Print GPT suggestion
         print(response.choices[0].message.content)
+
     except Exception as e:
         print(f"⚠️ Error calling OpenAI API: {e}")
+
     print("==========================================")
 
 if __name__ == "__main__":
