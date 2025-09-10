@@ -49,7 +49,20 @@ jobs:
         env:
           GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
         run: |
-          jq -R -s '{ streams: [ { stream: {job:"ci-cd-ai-demo"}, values: [ [ "\(now | todateiso8601)", . ] ] } ] }' failed_pipeline.log > loki.json
+          jq -R -s '
+            {
+              streams: [
+                {
+                  stream: { job: "ci-cd-ai-demo" },
+                  values: [
+                    (split("\n") | map([ (now*1000000000|tostring), . ]))
+                    | .[]
+                  ]
+                }
+              ]
+            }
+          ' failed_pipeline.log > loki.json
+
           curl -s -H "Content-Type: application/json" \
                -u "1330599:${GRAFANA_API_KEY}" \
                -X POST \
