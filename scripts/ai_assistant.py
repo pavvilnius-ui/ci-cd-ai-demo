@@ -1,21 +1,17 @@
 import os
-import openai
 
-log_file = os.getenv("PIPELINE_LOG", "failed_pipeline.log")
+def analyze_logs(log_path):
+    if not os.path.exists(log_path):
+        print("No logs found.")
+        return
+    with open(log_path, "r") as f:
+        logs = f.read()
+    print("=== AI Assistant Analysis ===")
+    if "AssertionError" in logs:
+        print("❌ Test failed. Possible assertion mismatch. Did you check your expected vs actual values?")
+    else:
+        print("⚠️ Tests failed. Review the logs carefully.")
+    print("=============================")
 
-with open(log_file, "r") as f:
-    log_text = f.read()
-
-prompt = f"""Analyze this CI/CD pipeline error and suggest a fix in simple language:
-
-{log_text}
-"""
-
-response = openai.ChatCompletion.create(
-    model="gpt-4o-mini",
-    messages=[{"role": "user", "content": prompt}]
-)
-
-suggestion = response.choices[0].message["content"]
-print("=== AI SUGGESTION ===")
-print(suggestion)
+if __name__ == "__main__":
+    analyze_logs("failed_pipeline.log")
