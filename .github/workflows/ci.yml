@@ -49,14 +49,7 @@ jobs:
         env:
           GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
         run: |
-          # Get current timestamp in milliseconds
-          TIMESTAMP=$(date +%s%3N)
-
-          # Create Loki JSON payload
-          jq -n --arg ts "$TIMESTAMP" --slurpfile log failed_pipeline.log \
-            '{ streams: [ { stream: { job:"ci-cd-ai-demo" }, values: [ [$ts, ($log|.[])] ] } ] }' > loki.json
-
-          # Push logs to Grafana Loki
+          jq -R -s '{ streams: [ { stream: {job:"ci-cd-ai-demo"}, values: [ [ "\(now | todateiso8601)", . ] ] } ] }' failed_pipeline.log > loki.json
           curl -s -H "Content-Type: application/json" \
                -u "1330599:${GRAFANA_API_KEY}" \
                -X POST \
