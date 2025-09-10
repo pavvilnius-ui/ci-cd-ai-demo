@@ -49,9 +49,9 @@ jobs:
         env:
           GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
         run: |
-          jq -R -s '{ streams: [ { stream: {job:"ci-cd-ai-demo"}, values: [ [ "\(now | todateiso8601)", . ] ] } ] }' failed_pipeline.log > loki.json
+          jq -R -s '{ streams: [ { stream: { job:"ci-cd-ai-demo" }, values: [ [ "\(date +%s%3N)", . ] ] } ] }' failed_pipeline.log > loki.json
           curl -s -H "Content-Type: application/json" \
-               -H "Authorization: Bearer $GRAFANA_API_KEY" \
+               -u "1330599:${GRAFANA_API_KEY}" \
                -X POST \
                --data-binary @loki.json \
                https://logs-prod-036.grafana.net/loki/api/v1/push
