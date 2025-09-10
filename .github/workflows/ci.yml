@@ -44,6 +44,18 @@ jobs:
           name: failed-pipeline-log
           path: failed_pipeline.log
 
+      - name: Send logs to Grafana Loki
+        if: always()
+        env:
+          GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
+        run: |
+          jq -R -s '{ streams: [ { stream: {job:"ci-cd-ai-demo"}, values: [ [ "\(now | todateiso8601)", . ] ] } ] }' failed_pipeline.log > loki.json
+          curl -s -H "Content-Type: application/json" \
+               -H "Authorization: Bearer $GRAFANA_API_KEY" \
+               -X POST \
+               --data-binary @loki.json \
+               https://<your-grafana-instance>.grafana.net/loki/api/v1/push
+
   ai-assistant:
     needs: build-and-test
     runs-on: ubuntu-latest
