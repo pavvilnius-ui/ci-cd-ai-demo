@@ -54,7 +54,7 @@ jobs:
                -H "Authorization: Bearer $GRAFANA_API_KEY" \
                -X POST \
                --data-binary @loki.json \
-               https://<your-grafana-instance>.grafana.net/loki/api/v1/push
+               https://pavvilnius.grafana.net/loki/api/v1/push
 
   ai-assistant:
     needs: build-and-test
