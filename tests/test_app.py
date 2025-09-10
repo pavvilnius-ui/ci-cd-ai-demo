@@ -5,4 +5,4 @@ def test_add():
 
 def test_multiply():
     print("test Multiply")
-    assert multiply(2, 3) == 5  # intentional fail for demo (expected 6)
+    assert multiply(2, 3) == 6  # intentional fail for demo (expected 6)
