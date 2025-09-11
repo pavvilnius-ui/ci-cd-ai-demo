@@ -65,9 +65,9 @@ jobs:
           cat <<EOF > loki.json
           {
             "streams": [
-              { "stream": {"job":"ci-cd-demo-update","metric":"failed"}, "values":[["$TIMESTAMP","$FAILED_COUNT"]] },
-              { "stream": {"job":"ci-cd-demo-update","metric":"passed"}, "values":[["$TIMESTAMP","$PASSED_COUNT"]] },
-              { "stream": {"job":"ci-cd-demo-update","metric":"total"}, "values":[["$TIMESTAMP","$TOTAL_COUNT"]] }
+              { "stream": {"job":"ci-cd-demo-pipeline","metric":"failed"}, "values":[["$TIMESTAMP","$FAILED_COUNT"]] },
+              { "stream": {"job":"ci-cd-demo-pipeline","metric":"passed"}, "values":[["$TIMESTAMP","$PASSED_COUNT"]] },
+              { "stream": {"job":"ci-cd-demo-pipeline","metric":"total"}, "values":[["$TIMESTAMP","$TOTAL_COUNT"]] }
             ]
           }
           EOF
