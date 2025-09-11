@@ -46,13 +46,17 @@ jobs:
             "streams": [
               {
                 "stream": {
-                  "job": "ci-cd-demo-update",
-                  "service_name": "ci-cd-demo-update",
+                  "job": "ci-cd-demo-pipe",
+                  "service_name": "ci-cd-demo-pipe",
                   "failed": "$FAILED_COUNT",
                   "passed": "$PASSED_COUNT",
                   "total": "$TOTAL_COUNT"
                 },
-                "values": [[ "$TIMESTAMP", "CI/CD test run" ]]
+                "values":[
+                  ["$TIMESTAMP", "failed:$FAILED_COUNT"],
+                  ["$TIMESTAMP", "passed:$PASSED_COUNT"],
+                  ["$TIMESTAMP", "total:$TOTAL_COUNT"]
+                ]
               }
             ]
           }
