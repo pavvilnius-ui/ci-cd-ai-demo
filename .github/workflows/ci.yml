@@ -46,13 +46,27 @@ jobs:
           name: failed-pipeline-log
           path: failed_pipeline.log
 
-      - name: Send logs to Grafana Loki
+      - name: Send summary to Grafana Loki
         if: always()
         env:
           GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
         run: |
-          awk -v ts=$(date +%s%N) '{print "[["ts",\"" $0 "\"]]"}' failed_pipeline.log > loki_values.json
-          jq -n --argjson values "$(cat loki_values.json)" '{streams:[{stream:{job:"ci-cd-ai-demo"},values:$values}]}' > loki.json
+          FAILED_COUNT=$(grep -c "FAILED" failed_pipeline.log || echo 0)
+          PASSED_COUNT=$(grep -c "PASSED" failed_pipeline.log || echo 0)
+          TOTAL_COUNT=$((FAILED_COUNT + PASSED_COUNT))
+          TIMESTAMP=$(date +%s%N)
+          cat <<EOF > loki.json
+          {
+            "streams": [
+              {
+                "stream": { "event": "ci-cd-demo" },
+                "values": [
+                  ["$TIMESTAMP", "{\"failed\": $FAILED_COUNT, \"passed\": $PASSED_COUNT, \"total\": $TOTAL_COUNT}"]
+                ]
+              }
+            ]
+          }
+          EOF
           curl -s -H "Content-Type: application/json" \
                -u "1330599:${GRAFANA_API_KEY}" \
                -X POST \
