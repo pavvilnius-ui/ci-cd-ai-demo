@@ -11,7 +11,7 @@ def test_add():
 # ---- Multiplication tests ----
 def test_multiply():
     # Intentional fail for demo
-    assert multiply(2, 3) == 5  # should be 6
+    assert multiply(2, 3) == 6 # should be 6
 
 # ---- Subtraction tests ----
 def test_subtract():
