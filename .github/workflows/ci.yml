@@ -51,15 +51,14 @@ jobs:
         env:
           GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
         run: |
-          # Count tests safely without failing if no matches
-          FAILED_COUNT=$(grep -c "FAILED" failed_pipeline.log 2>/dev/null || true)
-          PASSED_COUNT=$(grep -c "PASSED" failed_pipeline.log 2>/dev/null || true)
+          # Count tests from pytest JSON report
+          FAILED_COUNT=$(jq '[.tests[] | select(.outcome=="failed")] | length' report.json)
+          PASSED_COUNT=$(jq '[.tests[] | select(.outcome=="passed")] | length' report.json)
           FAILED_COUNT=${FAILED_COUNT:-0}
           PASSED_COUNT=${PASSED_COUNT:-0}
           TOTAL_COUNT=$((FAILED_COUNT + PASSED_COUNT))
           TIMESTAMP=$(date +%s%N)
 
-          # Build JSON payload for Loki
           cat <<EOF > loki.json
           {
             "streams": [
@@ -73,12 +72,11 @@ jobs:
           }
           EOF
 
-          # Push to Loki
           curl -s -H "Content-Type: application/json" \
-               -u "1330599:${GRAFANA_API_KEY}" \
-               -X POST \
-               --data-binary @loki.json \
-               https://logs-prod-036.grafana.net/loki/api/v1/push
+              -u "1330599:${GRAFANA_API_KEY}" \
+              -X POST \
+              --data-binary @loki.json \
+              https://logs-prod-036.grafana.net/loki/api/v1/push
 
   ai-assistant:
     needs: build-and-test
