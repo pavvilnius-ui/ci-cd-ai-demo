@@ -9,136 +9,85 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tests_failed: ${{ steps.set_test_result.outputs.tests_failed }}
-      build_id: ${{ steps.set_build_id.outputs.build_id }}
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
 
-      - name: Install dependencies
-        run: |
+      - run: |
           python -m pip install --upgrade pip
           pip install pytest
 
-      - name: Generate build ID
-        id: set_build_id
+      - name: Run tests and create logs
         run: |
-          BUILD_ID=$(date +%s)
-          echo "build_id=$BUILD_ID" >> $GITHUB_OUTPUT
-
-      - name: Run tests and normalize logs
-        id: run_tests
-        run: |
-          # Run tests (don't fail workflow if tests fail)
+          # Run pytest without failing workflow
           PYTHONPATH=$(pwd) pytest tests/ --maxfail=1 --disable-warnings -q | awk '{
             if (/FAILED/) print "FAILED";
             else if (/PASSED/) print "PASSED";
           }' > failed_pipeline.log || true
 
-          # If log is empty, ensure at least one PASSED line
+          # Ensure at least one line
           if [[ ! -s failed_pipeline.log ]]; then
             echo "PASSED" > failed_pipeline.log
           fi
 
-          # Set failed flag if any FAILED exists
+          # Set output flag
           if grep -q "FAILED" failed_pipeline.log; then
-            echo "failed=true" >> $GITHUB_ENV
-          else
-            echo "failed=false" >> $GITHUB_ENV
-          fi
-
-      - name: Set test result output
-        id: set_test_result
-        run: |
-          if [[ "${{ env.failed }}" == "true" ]]; then
             echo "tests_failed=true" >> $GITHUB_OUTPUT
           else
             echo "tests_failed=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Upload logs
-        uses: actions/upload-artifact@v4
-        with:
-          name: failed-pipeline-log
-          path: failed_pipeline.log
-
-      - name: Send logs to Grafana Loki
-        if: always()
+      - name: Push logs to Loki
         env:
           GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
         run: |
-          BUILD_ID=${{ steps.set_build_id.outputs.build_id }}
-
-          # Remove empty lines (should not be empty now)
-          grep -v '^$' failed_pipeline.log > failed_pipeline_clean.log
-
-          # Prepare values array for Loki
-          VALUES=$(awk -v now=$(date +%s) '{ts=now*1000000000; printf "[\"%d\",\"%s\"],", ts, $0}' failed_pipeline_clean.log | sed 's/,$//')
-
-          # Build Loki JSON
+          BUILD_ID=$(date +%s)
+          VALUES=$(awk -v now=$(date +%s) '{ts=now*1000000000; printf "[\"%d\",\"%s\"],", ts, $0}' failed_pipeline.log | sed 's/,$//')
           cat <<EOF > loki.json
           {
             "streams": [
               {
-                "stream": { "job": "ci-cd-ai-demo", "build_id": "$BUILD_ID" },
-                "values": [
-                  $VALUES
-                ]
+                "stream": { "job": "ci-cd-demo", "build_id": "$BUILD_ID" },
+                "values": [ $VALUES ]
               }
             ]
           }
           EOF
-
-          # Push to Loki
           curl -sf -H "Content-Type: application/json" \
                -u "1330599:${GRAFANA_API_KEY}" \
                -X POST \
-               --data-binary @loki.json
+               --data-binary @loki.json \
+               https://logs-prod-036.grafana.net/loki/api/v1/push
 
   ai-assistant:
     needs: build-and-test
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install openai
-
-      - name: Download logs
-        uses: actions/download-artifact@v4
+      - run: python -m pip install --upgrade pip && pip install openai
+      - uses: actions/download-artifact@v4
         with:
           name: failed-pipeline-log
           path: .
-
-      - name: Run AI Assistant
-        id: ai_assistant
+      - name: AI comment
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           if [[ "${{ needs.build-and-test.outputs.tests_failed }}" == "true" ]]; then
               python scripts/ai_assistant.py > ai_output.log
-              echo "❌ Test failures detected and analyzed by AI Assistant:" | cat - ai_output.log > temp.log && mv temp.log ai_output.log
+              echo "❌ Test failures detected:" | cat - ai_output.log > temp.log && mv temp.log ai_output.log
           else
-              echo "✅ All tests passed. PR can be merged!" > ai_output.log
+              echo "✅ All tests passed!" > ai_output.log
           fi
           cat ai_output.log
-
       - name: Post PR comment
-        if: always()
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.PAT_TOKEN }}
