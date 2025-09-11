@@ -7,6 +7,8 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    outputs:
+      tests_failed: ${{ steps.set_test_result.outputs.tests_failed }}
 
     steps:
       - name: Checkout code
@@ -23,13 +25,31 @@ jobs:
           pip install pytest pytest-json-report jq
 
       - name: Run tests and save JSON report
+        id: run_tests
         run: |
           set +e
           PYTHONPATH=$(pwd) pytest tests/ \
             --disable-warnings \
             --json-report \
             --json-report-file=report.json > failed_pipeline.log
-          echo "done"
+          if [ $? -ne 0 ]; then
+            echo "tests_failed=true" >> $GITHUB_ENV
+          else
+            echo "tests_failed=false" >> $GITHUB_ENV
+          fi
+
+      - name: Set test result output
+        id: set_test_result
+        run: |
+          echo "tests_failed=${{ env.tests_failed }}" >> $GITHUB_OUTPUT
+
+      - name: Upload artifacts (logs + JSON report)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-cd-artifacts
+          path: |
+            failed_pipeline.log
+            report.json
 
       - name: Send summary to Grafana Loki
         if: always()
@@ -41,23 +61,13 @@ jobs:
           TOTAL_COUNT=$((FAILED_COUNT + PASSED_COUNT))
           TIMESTAMP=$(date +%s%N)
 
+          # Push each count as a separate numeric stream
           cat <<EOF > loki.json
           {
             "streams": [
-              {
-                "stream": {
-                  "job": "ci-cd-demo-pipe",
-                  "service_name": "ci-cd-demo-pipe",
-                  "failed": "$FAILED_COUNT",
-                  "passed": "$PASSED_COUNT",
-                  "total": "$TOTAL_COUNT"
-                },
-                "values":[
-                  ["$TIMESTAMP", "failed:$FAILED_COUNT"],
-                  ["$TIMESTAMP", "passed:$PASSED_COUNT"],
-                  ["$TIMESTAMP", "total:$TOTAL_COUNT"]
-                ]
-              }
+              { "stream": {"job":"ci-cd-demo-update","metric":"failed"}, "values":[["$TIMESTAMP","$FAILED_COUNT"]] },
+              { "stream": {"job":"ci-cd-demo-update","metric":"passed"}, "values":[["$TIMESTAMP","$PASSED_COUNT"]] },
+              { "stream": {"job":"ci-cd-demo-update","metric":"total"}, "values":[["$TIMESTAMP","$TOTAL_COUNT"]] }
             ]
           }
           EOF
@@ -86,10 +96,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install openai
 
-      - name: Download logs and JSON report
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          name: failed-pipeline-log
+          name: ci-cd-artifacts
           path: .
 
       - name: Run AI Assistant
