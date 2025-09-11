@@ -9,6 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tests_failed: ${{ steps.set_test_result.outputs.tests_failed }}
+      build_id: ${{ steps.set_build_id.outputs.build_id }}
 
     steps:
       - name: Checkout code
@@ -24,13 +25,18 @@ jobs:
           python -m pip install --upgrade pip
           pip install pytest
 
+      - name: Generate build ID
+        id: set_build_id
+        run: |
+          BUILD_ID=$(date +%s)
+          echo "build_id=$BUILD_ID" >> $GITHUB_OUTPUT
+
       - name: Run tests and label logs
         id: run_tests
         run: |
           PYTHONPATH=$(pwd) pytest tests/ --maxfail=1 --disable-warnings -q | awk '{
-            if (/FAILED/) print "FAILED: "$0;
-            else if (/PASSED/) print "PASSED: "$0;
-            else print $0
+            if (/FAILED/) print "FAILED";
+            else if (/PASSED/) print "PASSED";
           }' > failed_pipeline.log || echo "failed=true" >> $GITHUB_ENV
 
       - name: Set test result output
@@ -53,17 +59,14 @@ jobs:
         env:
           GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
         run: |
-          jq -R -s '
-          {
-            streams: [
-              {
-                stream: { job: "ci-cd-ai-demo" },
-                values: (
-                  split("\n") | map([ (now | floor * 1000000000 | tostring), . ])
-                )
-              }
-            ]
-          }' failed_pipeline.log > loki.json
+          # Add build_id to each log line for filtering
+          awk -v BUILD_ID="${{ steps.set_build_id.outputs.build_id }}" '{print "{\"build_id\":\""BUILD_ID"\",\"status\":\""$0"\"}"}' failed_pipeline.log > loki_lines.json
+
+          # Prepare Loki JSON
+          jq -Rn '
+            [inputs | split("\n") | map(select(length > 0) | {stream: {job:"ci-cd-ai-demo", build_id: .build_id}, values: [[(now|floor*1000000000)|tostring, .status]]})] |
+            {streams: .}
+          ' loki_lines.json > loki.json
 
           curl -s -H "Content-Type: application/json" \
                -u "1330599:${GRAFANA_API_KEY}" \
