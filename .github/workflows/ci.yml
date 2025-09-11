@@ -27,16 +27,18 @@ jobs:
       - name: Run tests and save logs
         id: run_tests
         run: |
-          PYTHONPATH=$(pwd) pytest tests/ --maxfail=1 --disable-warnings -q > failed_pipeline.log || echo "failed=true" >> $GITHUB_ENV
+          set +e
+          PYTHONPATH=$(pwd) pytest tests/ --maxfail=1 --disable-warnings -q > failed_pipeline.log
+          if [ $? -ne 0 ]; then
+            echo "tests_failed=true" >> $GITHUB_ENV
+          else
+            echo "tests_failed=false" >> $GITHUB_ENV
+          fi
 
       - name: Set test result output
         id: set_test_result
         run: |
-          if [[ "${{ env.failed }}" == "true" ]]; then
-            echo "tests_failed=true" >> $GITHUB_OUTPUT
-          else
-            echo "tests_failed=false" >> $GITHUB_OUTPUT
-          fi
+          echo "tests_failed=${{ env.tests_failed }}" >> $GITHUB_OUTPUT
 
       - name: Upload logs
         uses: actions/upload-artifact@v4
@@ -49,20 +51,8 @@ jobs:
         env:
           GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
         run: |
-          jq -R -s '
-            {
-              streams: [
-                {
-                  stream: { job: "ci-cd-ai-demo" },
-                  values: [
-                    (split("\n") | map([ (now*1000000000|tostring), . ]))
-                    | .[]
-                  ]
-                }
-              ]
-            }
-          ' failed_pipeline.log > loki.json
-
+          awk -v ts=$(date +%s%N) '{print "[["ts",\"" $0 "\"]]"}' failed_pipeline.log > loki_values.json
+          jq -n --argjson values "$(cat loki_values.json)" '{streams:[{stream:{job:"ci-cd-ai-demo"},values:$values}]}' > loki.json
           curl -s -H "Content-Type: application/json" \
                -u "1330599:${GRAFANA_API_KEY}" \
                -X POST \
@@ -100,7 +90,7 @@ jobs:
         run: |
           if [[ "${{ needs.build-and-test.outputs.tests_failed }}" == "true" ]]; then
               python scripts/ai_assistant.py > ai_output.log
-              echo "❌ The following test failures were detected and analyzed by AI Assistant:" | cat - ai_output.log > temp.log && mv temp.log ai_output.log
+              echo "❌ Test failures detected and analyzed by AI Assistant:" | cat - ai_output.log > temp.log && mv temp.log ai_output.log
           else
               echo "✅ All tests passed. PR can be merged!" > ai_output.log
           fi
