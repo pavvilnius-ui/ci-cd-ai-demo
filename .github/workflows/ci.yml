@@ -7,8 +7,6 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-    outputs:
-      tests_failed: ${{ steps.set_test_result.outputs.tests_failed }}
 
     steps:
       - name: Checkout code
@@ -25,32 +23,13 @@ jobs:
           pip install pytest pytest-json-report jq
 
       - name: Run tests and save JSON report
-        id: run_tests
         run: |
           set +e
           PYTHONPATH=$(pwd) pytest tests/ \
-            --maxfail=1 \
             --disable-warnings \
             --json-report \
             --json-report-file=report.json > failed_pipeline.log
-          if [ $? -ne 0 ]; then
-            echo "tests_failed=true" >> $GITHUB_ENV
-          else
-            echo "tests_failed=false" >> $GITHUB_ENV
-          fi
-
-      - name: Set test result output
-        id: set_test_result
-        run: |
-          echo "tests_failed=${{ env.tests_failed }}" >> $GITHUB_OUTPUT
-
-      - name: Upload logs and JSON report
-        uses: actions/upload-artifact@v4
-        with:
-          name: failed-pipeline-log
-          path: |
-            failed_pipeline.log
-            report.json
+          echo "done"
 
       - name: Send summary to Grafana Loki
         if: always()
@@ -66,22 +45,24 @@ jobs:
           {
             "streams": [
               {
-                "stream": { "job": "ci-cd-demo-update" },
-                "values": [
-                  ["$TIMESTAMP", "failed=$FAILED_COUNT"],
-                  ["$TIMESTAMP", "passed=$PASSED_COUNT"],
-                  ["$TIMESTAMP", "total=$TOTAL_COUNT"]
-                ] 
+                "stream": {
+                  "job": "ci-cd-demo-update",
+                  "service_name": "ci-cd-demo-update",
+                  "failed": "$FAILED_COUNT",
+                  "passed": "$PASSED_COUNT",
+                  "total": "$TOTAL_COUNT"
+                },
+                "values": [[ "$TIMESTAMP", "CI/CD test run" ]]
               }
             ]
           }
           EOF
 
           curl -s -H "Content-Type: application/json" \
-              -u "1330599:${GRAFANA_API_KEY}" \
-              -X POST \
-              --data-binary @loki.json \
-              https://logs-prod-036.grafana.net/loki/api/v1/push
+               -u "1330599:${GRAFANA_API_KEY}" \
+               -X POST \
+               --data-binary @loki.json \
+               https://logs-prod-036.grafana.net/loki/api/v1/push
 
   ai-assistant:
     needs: build-and-test
