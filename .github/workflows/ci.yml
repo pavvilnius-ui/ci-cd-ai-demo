@@ -9,6 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tests_failed: ${{ steps.set_test_result.outputs.tests_failed }}
+      build_id: ${{ steps.set_build_id.outputs.build_id }}
 
     steps:
       - uses: actions/checkout@v4
@@ -21,9 +22,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install pytest
 
-      - name: Run tests and create logs
+      - name: Generate build ID
+        id: set_build_id
         run: |
-          # Run pytest without failing workflow
+          BUILD_ID=$(date +%s)
+          echo "build_id=$BUILD_ID" >> $GITHUB_OUTPUT
+
+      - name: Run tests and create logs
+        id: run_tests
+        run: |
+          # Run tests (do not fail workflow)
           PYTHONPATH=$(pwd) pytest tests/ --maxfail=1 --disable-warnings -q | awk '{
             if (/FAILED/) print "FAILED";
             else if (/PASSED/) print "PASSED";
@@ -34,19 +42,21 @@ jobs:
             echo "PASSED" > failed_pipeline.log
           fi
 
-          # Set output flag
+          # Set test result output
           if grep -q "FAILED" failed_pipeline.log; then
             echo "tests_failed=true" >> $GITHUB_OUTPUT
           else
             echo "tests_failed=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Push logs to Loki
+      - name: Push logs to Grafana Loki
         env:
           GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
         run: |
-          BUILD_ID=$(date +%s)
+          BUILD_ID=${{ steps.set_build_id.outputs.build_id }}
+          # Prepare values
           VALUES=$(awk -v now=$(date +%s) '{ts=now*1000000000; printf "[\"%d\",\"%s\"],", ts, $0}' failed_pipeline.log | sed 's/,$//')
+          # Build Loki JSON
           cat <<EOF > loki.json
           {
             "streams": [
@@ -57,6 +67,7 @@ jobs:
             ]
           }
           EOF
+          # Push to Loki
           curl -sf -H "Content-Type: application/json" \
                -u "1330599:${GRAFANA_API_KEY}" \
                -X POST \
@@ -68,25 +79,32 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
-      - run: python -m pip install --upgrade pip && pip install openai
-      - uses: actions/download-artifact@v4
-        with:
-          name: failed-pipeline-log
-          path: .
-      - name: AI comment
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install openai
+
+      - name: Copy test logs from previous job
+        run: |
+          cp $GITHUB_WORKSPACE/failed_pipeline.log ./failed_pipeline.log
+
+      - name: Run AI Assistant
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          if [[ "${{ needs.build-and-test.outputs.tests_failed }}" == "true" ]]; then
+          if grep -q "FAILED" failed_pipeline.log; then
               python scripts/ai_assistant.py > ai_output.log
               echo "❌ Test failures detected:" | cat - ai_output.log > temp.log && mv temp.log ai_output.log
           else
               echo "✅ All tests passed!" > ai_output.log
           fi
           cat ai_output.log
+
       - name: Post PR comment
         uses: actions/github-script@v7
         with:
