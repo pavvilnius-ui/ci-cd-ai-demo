@@ -24,10 +24,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install pytest
 
-      - name: Run tests and save logs
+      - name: Run tests and label logs
         id: run_tests
         run: |
-          PYTHONPATH=$(pwd) pytest tests/ --maxfail=1 --disable-warnings -q > failed_pipeline.log || echo "failed=true" >> $GITHUB_ENV
+          PYTHONPATH=$(pwd) pytest tests/ --maxfail=1 --disable-warnings -q | awk '{
+            if (/FAILED/) print "FAILED: "$0;
+            else if (/PASSED/) print "PASSED: "$0;
+            else print $0
+          }' > failed_pipeline.log || echo "failed=true" >> $GITHUB_ENV
 
       - name: Set test result output
         id: set_test_result
@@ -50,18 +54,16 @@ jobs:
           GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
         run: |
           jq -R -s '
-            {
-              streams: [
-                {
-                  stream: { job: "ci-cd-ai-demo" },
-                  values: [
-                    (split("\n") | map([ (now*1000000000|tostring), . ]))
-                    | .[]
-                  ]
-                }
-              ]
-            }
-          ' failed_pipeline.log > loki.json
+          {
+            streams: [
+              {
+                stream: { job: "ci-cd-ai-demo" },
+                values: (
+                  split("\n") | map([ (now | floor * 1000000000 | tostring), . ])
+                )
+              }
+            ]
+          }' failed_pipeline.log > loki.json
 
           curl -s -H "Content-Type: application/json" \
                -u "1330599:${GRAFANA_API_KEY}" \
@@ -100,7 +102,7 @@ jobs:
         run: |
           if [[ "${{ needs.build-and-test.outputs.tests_failed }}" == "true" ]]; then
               python scripts/ai_assistant.py > ai_output.log
-              echo "❌ The following test failures were detected and analyzed by AI Assistant:" | cat - ai_output.log > temp.log && mv temp.log ai_output.log
+              echo "❌ Test failures detected and analyzed by AI Assistant:" | cat - ai_output.log > temp.log && mv temp.log ai_output.log
           else
               echo "✅ All tests passed. PR can be merged!" > ai_output.log
           fi
