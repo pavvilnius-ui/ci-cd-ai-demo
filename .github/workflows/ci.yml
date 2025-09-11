@@ -51,15 +51,15 @@ jobs:
         env:
           GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
         run: |
-          # Count tests safely
-          FAILED_COUNT=$(grep -c "FAILED" failed_pipeline.log 2>/dev/null)
-          PASSED_COUNT=$(grep -c "PASSED" failed_pipeline.log 2>/dev/null)
+          # Count tests safely without failing if no matches
+          FAILED_COUNT=$(grep -c "FAILED" failed_pipeline.log 2>/dev/null || true)
+          PASSED_COUNT=$(grep -c "PASSED" failed_pipeline.log 2>/dev/null || true)
           FAILED_COUNT=${FAILED_COUNT:-0}
           PASSED_COUNT=${PASSED_COUNT:-0}
           TOTAL_COUNT=$((FAILED_COUNT + PASSED_COUNT))
           TIMESTAMP=$(date +%s%N)
 
-          # Build Loki JSON payload
+          # Build JSON payload for Loki
           cat <<EOF > loki.json
           {
             "streams": [
