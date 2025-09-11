@@ -40,7 +40,12 @@ jobs:
             else if (/PASSED/) print "PASSED";
           }' > failed_pipeline.log || true
 
-          # Set failed flag
+          # If log is empty, ensure at least one PASSED line
+          if [[ ! -s failed_pipeline.log ]]; then
+            echo "PASSED" > failed_pipeline.log
+          fi
+
+          # Set failed flag if any FAILED exists
           if grep -q "FAILED" failed_pipeline.log; then
             echo "failed=true" >> $GITHUB_ENV
           else
@@ -69,16 +74,10 @@ jobs:
         run: |
           BUILD_ID=${{ steps.set_build_id.outputs.build_id }}
 
-          # Skip if log is empty
-          if [[ ! -s failed_pipeline.log ]]; then
-            echo "No logs to push to Loki."
-            exit 0
-          fi
-
-          # Clean logs
+          # Remove empty lines (should not be empty now)
           grep -v '^$' failed_pipeline.log > failed_pipeline_clean.log
 
-          # Prepare values array
+          # Prepare values array for Loki
           VALUES=$(awk -v now=$(date +%s) '{ts=now*1000000000; printf "[\"%d\",\"%s\"],", ts, $0}' failed_pipeline_clean.log | sed 's/,$//')
 
           # Build Loki JSON
