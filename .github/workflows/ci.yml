@@ -34,11 +34,18 @@ jobs:
       - name: Run tests and normalize logs
         id: run_tests
         run: |
-          # Run tests and extract only PASSED or FAILED
+          # Run tests (don't fail workflow if tests fail)
           PYTHONPATH=$(pwd) pytest tests/ --maxfail=1 --disable-warnings -q | awk '{
             if (/FAILED/) print "FAILED";
             else if (/PASSED/) print "PASSED";
-          }' > failed_pipeline.log || echo "failed=true" >> $GITHUB_ENV
+          }' > failed_pipeline.log || true
+
+          # Set failed flag
+          if grep -q "FAILED" failed_pipeline.log; then
+            echo "failed=true" >> $GITHUB_ENV
+          else
+            echo "failed=false" >> $GITHUB_ENV
+          fi
 
       - name: Set test result output
         id: set_test_result
@@ -62,35 +69,37 @@ jobs:
         run: |
           BUILD_ID=${{ steps.set_build_id.outputs.build_id }}
 
-          # Remove empty lines
+          # Skip if log is empty
+          if [[ ! -s failed_pipeline.log ]]; then
+            echo "No logs to push to Loki."
+            exit 0
+          fi
+
+          # Clean logs
           grep -v '^$' failed_pipeline.log > failed_pipeline_clean.log
 
           # Prepare values array
           VALUES=$(awk -v now=$(date +%s) '{ts=now*1000000000; printf "[\"%d\",\"%s\"],", ts, $0}' failed_pipeline_clean.log | sed 's/,$//')
 
-          # Create Loki JSON
+          # Build Loki JSON
           cat <<EOF > loki.json
-                {
-                  "streams": [
-                    {
-                      "stream": {
-                        "job": "ci-cd-ai-demo",
-                        "build_id": "$BUILD_ID"
-                      },
-                      "values": [
-                        $VALUES
-                      ]
-                    }
-                  ]
-                }
-                EOF
+          {
+            "streams": [
+              {
+                "stream": { "job": "ci-cd-ai-demo", "build_id": "$BUILD_ID" },
+                "values": [
+                  $VALUES
+                ]
+              }
+            ]
+          }
+          EOF
 
           # Push to Loki
-          curl -s -H "Content-Type: application/json" \
+          curl -sf -H "Content-Type: application/json" \
                -u "1330599:${GRAFANA_API_KEY}" \
                -X POST \
-               --data-binary @loki.json \
-               https://logs-prod-036.grafana.net/loki/api/v1/push
+               --data-binary @loki.json
 
   ai-assistant:
     needs: build-and-test
