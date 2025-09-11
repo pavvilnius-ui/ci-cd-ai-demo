@@ -1,14 +1,14 @@
 name: CI/CD AI Demo
 
 on:
-  push:
-    branches: ["main"]
   pull_request:
     branches: ["main"]
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    outputs:
+      tests_failed: ${{ steps.set_test_result.outputs.tests_failed }}
 
     steps:
       - name: Checkout code
@@ -22,21 +22,64 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pytest
+          pip install pytest pytest-json-report jq
 
-      - name: Run tests and save logs
+      - name: Run tests and save JSON report
+        id: run_tests
         run: |
-          PYTHONPATH=$(pwd) pytest tests/ --maxfail=1 --disable-warnings -q > failed_pipeline.log || true
+          set +e
+          PYTHONPATH=$(pwd) pytest tests/ \
+            --disable-warnings \
+            --json-report \
+            --json-report-file=report.json > failed_pipeline.log
+          if [ $? -ne 0 ]; then
+            echo "tests_failed=true" >> $GITHUB_ENV
+          else
+            echo "tests_failed=false" >> $GITHUB_ENV
+          fi
 
-      - name: Upload logs
+      - name: Set test result output
+        id: set_test_result
+        run: |
+          echo "tests_failed=${{ env.tests_failed }}" >> $GITHUB_OUTPUT
+
+      - name: Upload artifacts (logs + JSON report)
         uses: actions/upload-artifact@v4
         with:
-          name: failed-pipeline-log
-          path: failed_pipeline.log
+          name: ci-cd-artifacts
+          path: |
+            failed_pipeline.log
+            report.json
+
+      - name: Send summary to Grafana Loki
+        if: always()
+        env:
+          GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
+        run: |
+          FAILED_COUNT=$(jq '[.tests[] | select(.outcome=="failed")] | length' report.json)
+          PASSED_COUNT=$(jq '[.tests[] | select(.outcome=="passed")] | length' report.json)
+          TOTAL_COUNT=$((FAILED_COUNT + PASSED_COUNT))
+          TIMESTAMP=$(date +%s%N)
+
+          # Push each count as a separate numeric stream
+          cat <<EOF > loki.json
+          {
+            "streams": [
+              { "stream": {"job":"ci-cd-demo-pipeline","metric":"failed"}, "values":[["$TIMESTAMP","$FAILED_COUNT"]] },
+              { "stream": {"job":"ci-cd-demo-pipeline","metric":"passed"}, "values":[["$TIMESTAMP","$PASSED_COUNT"]] },
+              { "stream": {"job":"ci-cd-demo-pipeline","metric":"total"}, "values":[["$TIMESTAMP","$TOTAL_COUNT"]] }
+            ]
+          }
+          EOF
+
+          curl -s -H "Content-Type: application/json" \
+               -u "1330599:${GRAFANA_API_KEY}" \
+               -X POST \
+               --data-binary @loki.json \
+               https://logs-prod-036.grafana.net/loki/api/v1/push
 
   ai-assistant:
     needs: build-and-test
-    if: always()
     runs-on: ubuntu-latest
 
     steps:
@@ -53,14 +96,36 @@ jobs:
           python -m pip install --upgrade pip
           pip install openai
 
-      - name: Download logs
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          name: failed-pipeline-log
+          name: ci-cd-artifacts
           path: .
 
       - name: Run AI Assistant
-        if: hashFiles('failed_pipeline.log') != ''
+        id: ai_assistant
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: python scripts/ai_assistant.py
+        run: |
+          if [[ "${{ needs.build-and-test.outputs.tests_failed }}" == "true" ]]; then
+              python scripts/ai_assistant.py > ai_output.log
+              echo "❌ Test failures detected and analyzed by AI Assistant:" | cat - ai_output.log > temp.log && mv temp.log ai_output.log
+          else
+              echo "✅ All tests passed. PR can be merged!" > ai_output.log
+          fi
+          cat ai_output.log
+
+      - name: Post PR comment
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.PAT_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const commentBody = fs.readFileSync('ai_output.log', 'utf8');
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: commentBody
+            });
