@@ -58,16 +58,14 @@ jobs:
         run: |
           FAILED_COUNT=$(jq '[.tests[] | select(.outcome=="failed")] | length' report.json)
           PASSED_COUNT=$(jq '[.tests[] | select(.outcome=="passed")] | length' report.json)
-          TOTAL_COUNT=$((FAILED_COUNT + PASSED_COUNT))
           TIMESTAMP=$(date +%s%N)
 
-          # Push each count as a separate numeric stream
+          # Wrap values in JSON so Grafana can parse them
           cat <<EOF > loki.json
           {
             "streams": [
-              { "stream": {"job":"ci-cd-demo-pipeline2","metric":"failed"}, "values":[["$TIMESTAMP","$FAILED_COUNT"]] },
-              { "stream": {"job":"ci-cd-demo-pipeline2","metric":"passed"}, "values":[["$TIMESTAMP","$PASSED_COUNT"]] },
-              { "stream": {"job":"ci-cd-demo-pipeline2","metric":"total"}, "values":[["$TIMESTAMP","$TOTAL_COUNT"]] }
+              { "stream": {"job":"ci-cd-demo-pipeline2","metric":"failed"}, "values":[["$TIMESTAMP","{\"value\":$FAILED_COUNT}"]] },
+              { "stream": {"job":"ci-cd-demo-pipeline2","metric":"passed"}, "values":[["$TIMESTAMP","{\"value\":$PASSED_COUNT}"]] }
             ]
           }
           EOF
