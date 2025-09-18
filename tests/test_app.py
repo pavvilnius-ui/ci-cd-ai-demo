@@ -11,11 +11,11 @@ def test_add():
 # ---- Multiplication tests ----
 def test_multiply():
     # Intentional fail for demo
-    assert multiply(2, 3) == 5
+    assert multiply(2, 3) == 6
 
 # ---- Subtraction tests ----
 def test_subtract():
-    assert subtract(5, 3) == -2
+    assert subtract(5, 3) == 2
     assert subtract(0, 4) == 4
 
 # ---- Division tests ----
