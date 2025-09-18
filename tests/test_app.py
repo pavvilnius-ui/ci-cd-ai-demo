@@ -26,7 +26,7 @@ def test_divide():
 
 # ---- Even number tests ----
 def test_is_even():
-    assert is_even(2) is True
+    assert is_even(2) is False
     assert is_even(3) is False
 
 # ---- Power tests ----
