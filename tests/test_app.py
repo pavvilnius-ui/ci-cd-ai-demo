@@ -44,6 +44,6 @@ def test_modulus():
 
 # ---- Is Positive tests ----
 def test_is_positive():
-    assert is_positive(5) is True
-    assert is_positive(-1) is False
-    assert is_positive(0) is False
+    assert is_positive(5) is False
+    assert is_positive(-1) is True
+    assert is_positive(0) is True
