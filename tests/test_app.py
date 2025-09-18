@@ -16,7 +16,7 @@ def test_multiply():
 # ---- Subtraction tests ----
 def test_subtract():
     assert subtract(5, 3) == 2
-    assert subtract(0, 4) == 4
+    assert subtract(0, 4) == -4
 
 # ---- Division tests ----
 def test_divide():
@@ -26,7 +26,7 @@ def test_divide():
 
 # ---- Even number tests ----
 def test_is_even():
-    assert is_even(2) is False
+    assert is_even(2) is True
     assert is_even(3) is False
 
 # ---- Power tests ----
@@ -44,6 +44,6 @@ def test_modulus():
 
 # ---- Is Positive tests ----
 def test_is_positive():
-    assert is_positive(5) is False
-    assert is_positive(-1) is True
-    assert is_positive(0) is True
+    assert is_positive(5) is True
+    assert is_positive(-1) is False
+    assert is_positive(0) is False
